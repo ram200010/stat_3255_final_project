@@ -1,0 +1,693 @@
+---
+title: "Predicting the Energy Demand of the Philip E. Austin Building"
+author: 'Rahul Manna'
+subtitle: "Introduction to Data Science | Fall 2024"
+format:
+    revealjs:
+        slide-number: true
+        preview-links: true
+        theme: simple
+css: style.css
+
+bibliography: references.bib
+---
+
+## EnergyStats Data {.smaller}
+
+
+:::: {.columns}
+::: {.column width="50%" .smaller}
+
+In December 2016, Department of Statistics began a partnership with the Facilities Operations Department to analyze the University's energy consumption data.
+
+Since 2018, energy consumption data of all Storrs campus buildings has been published on [EnergyStats Website](https://energystats.fo.uconn.edu/)
+
+The data contains variables such as `electricity_reading`, `steam_reading`, and `chilled_water_reading` which are all outputs of **UConn's Cogeneration Plant**.
+:::
+::: {.column width="50%" .smaller}
+
+![](images/energy_stats_website.png){fig-align="right"}
+:::
+::::
+
+
+
+# UConn's Cogeneration Plant {.smaller}
+
+## UConn's Cogeneration Plant {.smaller}
+
+:::: {.columns}
+
+::: {.column width="55%" .smaller}
+
+
+- **Opened February 2006**: Replaced oil-fired boilers, enabling UConn to meet its energy needs on the Storrs campus.
+- Achieves **80% fuel efficiency** compared to 33% for conventional power plants.
+- **Cleaner fuel**: Utilizes natural gas for electricity and steam generation.
+- **Emissions reduction**: Eliminates need for separate steam facilities; reduces carbon dioxide emissions by ~30,000 tons annually.
+
+Source: @uconn_cogen_plant
+:::
+
+::: {.column width="45%"}
+![](images/edited_uconn_co_gen_plant.png){fig-align="right"}
+:::
+
+::::
+
+
+## How does it work? {.smaller}
+
+Natural Gas Powered Turbines Generate Electricity
+
+:::: {.columns}
+
+::: {.column width="55%" .smaller}
+
+
+![Solar Taurus 70 Turbine; Image courtesy of @solar_turbines_taurus70](images/solarus70_turbine.jpg){width='55%'}
+
+![@uconn_cogen_brochure; Image courtesy of @asme_cogen_plant](images/gas_turbine.png){width='55%'}
+
+:::
+::: {.column width="45%" .smaller}
+
+![Diagram of Co-Gen Plant; Image courtesy of @uconn_cogen_brochure](images/cogen%20diagram_enhanced.png)
+
+:::
+::::
+
+
+
+
+## How does it work? {.smaller}
+
+Underground pipes transport steam and chilled water to buildings all over campus.
+
+:::: {.columns}
+::: {.column width="60%" .smaller}
+![Underground Steam Tunnels](images/underground_steam_tunnels.jpg){fig-align="left"}
+:::
+::: {.column width="35%" .smaller}
+![Above the Steam Tunnels](images/above_steam_tunnels.jpg)
+:::
+::::
+
+Images courtesy of @uconn_utility_plant_tour
+
+
+## Variables in EnergyStats Dataset {.smaller}
+
+**Three Output Variables**
+
+- `electricity_reading` - Electricity Consumption in kiloWatts
+- `steam_reading` - Steam FLow in Pounds Per Hour
+- `chilled_water_reading` - Chilled Water Flow in Pounds Per Hour
+
+**Other Variables**
+
+- `time` - Time at which measurments were taken. Measurments are taken in 15 minute increments.
+- `temperature` - Temperature at point in time in Fahrenheit.
+- `humidity`- Humidity at point in time in percent.
+
+Source: @uconn_energy_data_request
+
+
+## Motivation {.smaller}
+
+**Goal:** Develop a model to predict the energy demand from the Philip E. Austin Building
+
+- **Cost Efficiency:** Optimizes energy use and reduces operational costs.  
+- **Sustainability:** Minimizes carbon footprint and supports green initiatives.  
+- **System Design:** Informs efficient HVAC and renewable energy systems.  
+- **Smart Integration:** Enables real-time monitoring and adaptive management.
+
+
+UConn's goal to become carbon neutral by 2030 while meeting the increasing energy demand from a rapidly growing campus (@uconn_climate_energy).
+
+
+"UConn debuts new dorms and dining hall" - *The Daily Campus*, August 23, 2024 (@uconn_new_dorms_dining)
+
+"Groundbreaking Celebrates State-of-the-Art Nursing Building" - *UConn Today*, October 30, 2023 (@uconn_nursing_building)
+
+
+
+
+
+
+
+# Extracting More Variables
+
+
+
+## More Variables - Time {.smaller}
+
+The `time` variable can be used to extract additional variables.
+
+- `hour`: Hour 0 - 23
+- `day_of_week`: Monday-Sunday coded as 0-6
+- `year`: Year 2020-2024
+- `month`: Months 1-12
+- `day_type`: weekday, weekend, or holiday coded as 0, 1, 2 using `holidays` package
+
+The variables above along with semester start dates published by the [Office of the Registrar](https://registrar.uconn.edu/academic-calendar/) can used to get the following variable.
+
+- `session` : 'Fall', 'Winter', 'Spring', 'Summer' coded 0-3. 
+
+
+
+## More Variables - Semester Info {.smaller}
+
+Semester Enrollement Data is publsihed by the [Office of Budget, Planning and Institutional Research](https://bpir.uconn.edu/home/institutional-research/dashboards-public/student-enrollment-public/).
+
+- `clas_enrollement`: College of Liberal Arts and Sciences Enrollement (Storrs)
+- `stat_enrollement`: Department of Statistics Enrollement (Storrs)
+- `english_enrollement`: Department of English Enrollement (Storrs)
+- `storrs_enrollement`: Total Enrollement at Storrs Campus
+
+*Department of Geography has some missing values and recently merged with Urban and Community Studies so the data was excluded.
+
+
+## Some Visualizations {.smaller .scrollable}
+
+::: {style="font-size: 60%;"}
+**Average Consumption by Hour**
+:::
+```{python}
+#| fig-align: center
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+data=pd.read_feather('data/train_data.feather')
+
+grouped_by_hour = data.groupby('hour')
+hours = grouped_by_hour.groups.keys()
+
+avg_electricity = [grouped_by_hour.get_group(x)['electricity_reading'].mean() for x in hours]
+avg_steam = [grouped_by_hour.get_group(x)['steam_reading'].mean() for x in hours]
+avg_chilled_water = [grouped_by_hour.get_group(x)['chilled_water_reading'].mean() for x in hours]
+
+fig, ax = plt.subplots(1, 3, figsize=(12, 2.5), constrained_layout=True)
+
+bars1 = ax[0].bar(hours, avg_electricity, color='tab:green')
+ax[0].set_title('Average Electricity Consumption')
+ax[0].set_ylabel('Electricity Consumption, kW')
+ax[0].set_xlabel('Hour')
+
+
+bars2 = ax[1].bar(hours, avg_steam, color='tab:orange')
+ax[1].set_title('Average Steam Consumption')
+ax[1].set_ylabel('Steam Consumption, PPH')
+ax[1].set_xlabel('Hour')
+
+
+bars3 = ax[2].bar(hours, avg_chilled_water, color='tab:blue')
+ax[2].set_title('Average Chilled Water Consumption')
+ax[2].set_ylabel('Chilled Water Consumption, PPH')
+ax[2].set_xlabel('Hour')
+
+plt.show()
+
+
+```
+
+::: {style="font-size: 60%;"}
+**Average Consumption by Semester**
+:::
+```{python}
+#| fig-align: center
+
+data=pd.read_feather('data/train_data.feather')
+
+grouped_by_session = data.groupby('session')
+
+sessions = grouped_by_session.groups.keys()
+
+avg_electricity = [grouped_by_session.get_group(x)['electricity_reading'].mean() for x in sessions]
+avg_steam = [grouped_by_session.get_group(x)['steam_reading'].mean() for x in sessions]
+avg_chilled_water = [grouped_by_session.get_group(x)['chilled_water_reading'].mean() for x in sessions]
+
+fig, ax = plt.subplots(1, 3, figsize=(12,2.5), constrained_layout=True)
+
+bars1 = ax[0].bar(sessions, avg_electricity, color='tab:green')
+ax[0].set_title('Average Electricity Consumption')
+ax[0].set_ylabel('Electricity Consumption, kW')
+ax[0].set_xlabel('Session')
+ax[0].bar_label(bars1, fmt='%.1f', label_type='edge')
+ax[0].set_ylim(0,90)
+
+bars2 = ax[1].bar(sessions, avg_steam, color='tab:orange')
+ax[1].set_title('Average Steam Consumption')
+ax[1].set_ylabel('Steam Consumption, PPH')
+ax[1].set_xlabel('Session')
+ax[1].bar_label(bars2, fmt='%.1f', label_type='edge')
+ax[1].set_ylim(0,1050)
+
+bars3 = ax[2].bar(sessions, avg_chilled_water, color='tab:blue')
+ax[2].set_title('Average Chilled Water Consumption')
+ax[2].set_ylabel('Chilled Water Consumption, PPH')
+ax[2].set_xlabel('Session')
+ax[2].bar_label(bars3, fmt='%.1f', label_type='edge')
+ax[2].set_ylim(0,45)
+
+plt.show()
+
+```
+
+
+# Model
+
+
+
+## Data Selection {.smaller .scrollable}
+
+Data from Fall 2020 - beginning of Fall 2024 (GREEN) for training.
+Data from Fall 2024 (RED) - August 26, 2024 to November 15, 2024 for testing. 
+```{python}
+#| fig-align: center
+
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+el_data = pd.read_csv("data/Energy_EL_20180101_20241115_(0238) Austin, Phillip E (Clas).tsv",sep='\t')
+st_data = pd.read_csv("data/Energy_ST_20180101_20241115_(0238) Austin, Phillip E (Clas).tsv",sep='\t')
+cw_data = pd.read_csv("data/Energy_CW_20180101_20241115_(0238) Austin, Phillip E (Clas).tsv",sep='\t')
+
+el_data['time'] = pd.to_datetime(el_data['TimeStampUTC'],format='%Y/%m/%d %H:%M:%S')
+st_data['time'] = pd.to_datetime(st_data['TimeStampUTC'],format='%Y/%m/%d %H:%M:%S')
+cw_data['time'] = pd.to_datetime(cw_data['TimeStampUTC'],format='%Y/%m/%d %H:%M:%S')
+
+
+plt.figure(figsize=(12,7.5))
+plt.subplot(3,1,1)
+plt.axvspan(datetime(2020,8,31),datetime(2024,8,26), facecolor='green', alpha=0.2)
+plt.axvspan(datetime(2018,1,1),datetime(2020,8,31), facecolor='grey', alpha=0.2)
+plt.axvspan(datetime(2024,8,26),datetime(2025,1,1), facecolor='red', alpha=0.2)
+plt.plot(el_data['time'],el_data['Reading'],label=r'$\bf{Electricity\;Consumption}$',linewidth=0.5)
+plt.title('Electricity, Steam, and Chilled Water Consumption - Philip E. Austin Building')
+plt.vlines(datetime(2020,8,31),0,200,linestyle='--',color='tab:red')
+plt.text(datetime(2020,9,20),150,'Fall 2020\nAugust 31, 2020',ha='left')
+plt.vlines(datetime(2024,8,26),0,200,linestyle='--',color='tab:red')
+plt.text(datetime(2024,8,10),20,'Fall 2024\nAugust 26, 2024',ha='right')
+plt.xlim(datetime(2018,1,1),datetime(2025,1,1))
+plt.ylim(0,200)
+plt.ylabel('Electricity Consumption\nkW')
+plt.legend(loc='upper left')
+
+
+
+plt.subplot(3,1,2)
+
+plt.axvspan(datetime(2020,8,31),datetime(2024,8,26), facecolor='green', alpha=0.2)
+plt.axvspan(datetime(2018,1,1),datetime(2020,8,31), facecolor='grey', alpha=0.2)
+plt.axvspan(datetime(2024,8,26),datetime(2025,1,1), facecolor='red', alpha=0.2)
+plt.plot(st_data['time'],st_data['Reading'],label=r'$\bf{Steam\;Consumption}$',linewidth=0.5)
+plt.vlines(datetime(2020,8,31),0,4800,linestyle='--',color='tab:red')
+plt.text(datetime(2020,9,20),3800,'Fall 2020\nAugust 31, 2020',ha='left')
+plt.vlines(datetime(2024,8,26),0,4800,linestyle='--',color='tab:red')
+plt.text(datetime(2024,8,10),3800,'Fall 2024\nAugust 26, 2024',ha='right')
+plt.xlim(datetime(2018,1,1),datetime(2025,1,1))
+plt.ylim(-150,4800)
+plt.ylabel('Steam Consumption\nPPH')
+plt.legend(loc='upper left')
+
+
+plt.subplot(3,1,3)
+plt.axvspan(datetime(2020,8,31),datetime(2024,8,26), facecolor='green', alpha=0.2)
+plt.axvspan(datetime(2018,1,1),datetime(2020,8,31), facecolor='grey', alpha=0.2)
+plt.axvspan(datetime(2024,8,26),datetime(2025,1,1), facecolor='red', alpha=0.2)
+plt.plot(cw_data['time'],cw_data['Reading'],label=r'$\bf{Chilled\;Water\;Consumption}$',linewidth=0.5)
+plt.vlines(datetime(2020,8,31),0,2400,linestyle='--',color='tab:red')
+plt.text(datetime(2020,9,20),1800,'Fall 2020\nAugust 31, 2020',ha='left')
+plt.vlines(datetime(2024,8,26),0,2400,linestyle='--',color='tab:red')
+plt.text(datetime(2024,8,10),1800,'Fall 2024\nAugust 26, 2024',ha='right')
+plt.xlim(datetime(2018,1,1),datetime(2025,1,1))
+plt.ylim(-100,2400)
+plt.xlabel('Time')
+plt.ylabel('Chilled Water Consumption\nPPH')
+plt.legend(loc='upper left')
+
+plt.show()
+
+```
+
+
+## Some Multi-Output Model Options
+
+- Neural Networks (Ex. `tensorflow.keras.model`, `pytorch`, etc.)
+- Random Forest (`sklearn.ensemble.RandomForestRegressor`)
+- **Gradient Boosting Trees (`xgboost`)**
+- Lasso (`MultiTaskLasso`)
+
+
+## Xgboost Tuning {.smaller}
+
+Tuning using a predefined split - Fall 2020 to Before Fall 2023 for training and Fall 2023 to Before Fall 2024 for testing.
+This should prevent overfitting to our high frequency data. 
+```{.python}
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import RandomizedSearchCV, PredefinedSplit
+from sklearn.multioutput import MultiOutputRegressor
+import xgboost as xgb
+
+# Load the data
+data = pd.read_feather('train_data.feather')
+
+# Define features and targets
+X = data[['humidity', 'temperature', 'day_of_week', 'month', 'year', 
+          'day', 'stors_enrollement', 'clas_enrollement', 'stat_enrollement', 
+          'session_coded', 'day_type', 'english_enrollement', 'hour', 'minute']]
+y = data[['electricity_reading', 'steam_reading', 'chilled_water_reading']]
+
+# Split based on 'time' (assuming 'time' is a datetime column)
+data['time'] = pd.to_datetime(data['time'])
+split_date = "2023-08-28"  # Fall 2023 Start Date
+X_train = X[data['time'] < split_date]
+y_train = y[data['time'] < split_date]
+X_test = X[data['time'] >= split_date]
+y_test = y[data['time'] >= split_date]
+
+# Combine training and testing datasets
+X_combined = pd.concat([X_train, X_test], axis=0)
+y_combined = pd.concat([y_train, y_test], axis=0)
+
+# Create test fold: -1 for training data, 0 for test data
+test_fold = [-1] * len(X_train) + [0] * len(X_test)
+
+# Create PredefinedSplit object
+ps = PredefinedSplit(test_fold)
+
+# Define the XGBoost model
+base_model = xgb.XGBRegressor(
+    objective='reg:squarederror',
+    random_state=42,
+    tree_method='exact'
+)
+model = MultiOutputRegressor(base_model, n_jobs=-1)
+
+# Define the parameter grid for RandomizedSearchCV
+param_dist = {
+    'estimator__max_depth': [3, 5, 7, 9,6],
+    'estimator__learning_rate': [0.001, 0.01, 0.1],
+    'estimator__n_estimators': [600, 700, 800,900, 1000],
+    'estimator__gamma': [0, 1, 10, 100,700,800,900],
+    'estimator__reg_lambda': [0.5, 1, 2],
+    'estimator__reg_alpha': [0.1, 0.5, 0.8, 1],
+}
+
+# RandomizedSearchCV with predefined split
+random_search = RandomizedSearchCV(
+    estimator=model,
+    param_distributions=param_dist,
+    n_iter=200,  # Number of parameter combinations to try
+    cv=ps,  # Use predefined split
+    scoring='neg_mean_squared_error',
+    random_state=42,
+    verbose=2,
+    n_jobs=-1
+)
+
+# Fit RandomizedSearchCV
+random_search.fit(X_combined, y_combined)
+
+# Results
+print("Best Parameters:", random_search.best_params_)
+print("Best Cross-Validation Score (MSE):", -random_search.best_score_)
+
+```
+
+
+## Xgboost Model {.smaller}
+
+```{.python}
+import xgboost as xgb
+from sklearn.multioutput import MultiOutputRegressor
+from sklearn.metrics import mean_squared_error
+import numpy as np
+from sklearn.metrics import mean_absolute_error, r2_score
+import pandas as pd
+import matplotlib.pyplot as plt
+
+data = pd.read_feather('data/train_data.feather')
+
+# Define features and targets
+X = data[['humidity', 'temperature', 'day_of_week', 'month', 'year', 
+          'day', 'stors_enrollement', 'clas_enrollement', 'stat_enrollement', 
+          'session_coded', 'day_type','english_enrollement','hour','minute']]
+y = data[['electricity_reading', 'steam_reading', 'chilled_water_reading']]
+
+# Create the XGBoost model wrapped in MultiOutputRegressor
+model = MultiOutputRegressor(xgb.XGBRegressor(
+    objective='reg:squarederror',
+    random_state=42,
+    max_depth=3,
+    learning_rate=0.1,
+    n_estimators=600,
+    gamma =0,
+    reg_lambda=1,
+    reg_alpha=0.5,
+    tree_method= 'exact',
+    
+    ),
+    n_jobs=-1)
+
+# Train the model
+model.fit(X, y)
+
+test_data = pd.read_feather("data/test_data.feather")
+
+X_test = test_data[['humidity', 'temperature', 'day_of_week', 'month', 'year', 
+          'day', 'stors_enrollement', 'clas_enrollement', 'stat_enrollement', 
+          'session_coded', 'day_type','english_enrollement','hour','minute']]
+y_test = test_data[['electricity_reading', 'steam_reading', 'chilled_water_reading']]
+
+y_pred = model.predict(X_test)
+
+mse = mean_squared_error(y_test, y_pred, multioutput='raw_values')
+mae = mean_absolute_error(y_test, y_pred, multioutput='raw_values')
+r2 = r2_score(y_test, y_pred, multioutput='raw_values')
+
+# Overall Mean Squared Error
+overall_mse = mean_squared_error(y_test, y_pred)
+print("Overall Mean Squared Error:", overall_mse)
+
+```
+
+
+
+```{python}
+import xgboost as xgb
+from sklearn.multioutput import MultiOutputRegressor
+from sklearn.metrics import mean_squared_error
+import numpy as np
+from sklearn.metrics import mean_absolute_error, r2_score
+import pandas as pd
+import matplotlib.pyplot as plt
+
+data = pd.read_feather('data/train_data.feather')
+
+# Define features and targets
+X = data[['humidity', 'temperature', 'day_of_week', 'month', 'year', 
+          'day', 'stors_enrollement', 'clas_enrollement', 'stat_enrollement', 
+          'session_coded', 'day_type','english_enrollement','hour','minute']]
+y = data[['electricity_reading', 'steam_reading', 'chilled_water_reading']]
+
+# Create the XGBoost model wrapped in MultiOutputRegressor
+model = MultiOutputRegressor(xgb.XGBRegressor(
+    objective='reg:squarederror',
+    random_state=42,
+    max_depth=3,
+    learning_rate=0.1,
+    n_estimators=600,
+    gamma =0,
+    reg_lambda=1,
+    reg_alpha=0.5,
+    tree_method= 'exact',
+    
+    ),
+    n_jobs=-1)
+
+# Train the model
+model.fit(X, y)
+
+test_data = pd.read_feather("data/test_data.feather")
+
+X_test = test_data[['humidity', 'temperature', 'day_of_week', 'month', 'year', 
+          'day', 'stors_enrollement', 'clas_enrollement', 'stat_enrollement', 
+          'session_coded', 'day_type','english_enrollement','hour','minute']]
+y_test = test_data[['electricity_reading', 'steam_reading', 'chilled_water_reading']]
+
+y_pred = model.predict(X_test)
+
+mse = mean_squared_error(y_test, y_pred, multioutput='raw_values')
+mae = mean_absolute_error(y_test, y_pred, multioutput='raw_values')
+r2 = r2_score(y_test, y_pred, multioutput='raw_values')
+
+# Overall Mean Squared Error
+overall_mse = mean_squared_error(y_test, y_pred)
+print("Overall Mean Squared Error:", overall_mse)
+
+```
+
+
+## Results - Electricity
+
+
+```{python}
+#| fig-align: center
+
+test_el = [x[0] for x in y_pred]
+
+plt.figure(figsize=(12,6))
+plt.plot(test_data['time'],test_data['electricity_reading'],label='Actual',linewidth=1)
+plt.plot(test_data['time'],test_el,label='Prediction',linewidth=1)
+
+plt.title('Electricity Consumption - Philip E. Austin Building')
+plt.xlabel('Time')
+plt.ylabel('Electricity Consumption, kW')
+plt.ylim(68,138)
+
+plt.text(datetime(2024,10,7),136,f'Electricity Reading Metrics\n' + 
+                                r'$\bf{MSE}$'+ f': {mse[0]:.4f}\n'
+                                r'$\bf{MAE}$'+ f': {mae[0]:.4f}\n' +
+                                r'$\bf{R^2}$'+ f': {r2[0]:.4f}\n',va='top',fontsize=12,ha='center')
+                                
+plt.legend(loc='upper left',prop={'size':'large'})
+plt.show()
+plt.close()
+
+```
+
+
+
+## Results - Steam {.smaller}
+
+```{python}
+#| fig-align: center
+
+test_st = [x[1] for x in y_pred]
+
+plt.figure(figsize=(12,6))
+plt.plot(test_data['time'],test_data['steam_reading'],label='Actual',linewidth=1)
+plt.plot(test_data['time'],test_st,label='Prediction',linewidth=1)
+
+plt.title('Steam Consumption - Philip E. Austin Building')
+plt.xlabel('Time')
+plt.ylabel('Steam Consumption, PPH')
+
+plt.text(datetime(2024,10,7),3500,f'Steam Reading Metrics\n' + 
+                                r'$\bf{MSE}$'+ f': {mse[1]:.4f}\n'
+                                r'$\bf{MAE}$'+ f': {mae[1]:.4f}\n' +
+                                r'$\bf{R^2}$'+ f': {r2[1]:.4f}\n',va='top',fontsize=12,ha='center')
+                                
+plt.legend(loc='upper left',prop={'size':'large'})
+plt.show()
+plt.close()
+```
+*Negative $R^2$ indicates a worse fit than a assumed mean line.* 
+
+## Results - Chilled Water
+
+```{python}
+#| fig-align: center
+
+test_cw = [x[2] for x in y_pred]
+
+plt.figure(figsize=(12,6))
+plt.plot(test_data['time'],test_data['chilled_water_reading'],label='Actual',linewidth=1)
+plt.plot(test_data['time'],test_cw,label='Prediction',linewidth=1)
+
+plt.title('Chilled Water Consumption - Philip E. Austin Building')
+plt.xlabel('Time')
+plt.ylabel('Chilled Water Consumption, PPH')
+
+plt.text(datetime(2024,10,7),125,f'Chilled Water Reading Metrics\n' + 
+                                r'$\bf{MSE}$'+ f': {mse[2]:.4f}\n'
+                                r'$\bf{MAE}$'+ f': {mae[2]:.4f}\n' +
+                                r'$\bf{R^2}$'+ f': {r2[2]:.4f}\n',va='top',fontsize=12,ha='center')
+                                
+plt.legend(loc='upper left',prop={'size':'large'})
+plt.show()
+plt.close()
+```
+
+## Forecasting
+
+Forecasting is possible with weather data from Weather.com or National Weather Service.
+
+Source: @weather_hourly_forecast
+
+```{.python}
+forecast_data = pd.read_excel("data/forecast_data.xlsx")
+
+X = forecast_data[['humidity', 'temperature', 'day_of_week', 'month', 'year', 
+          'day', 'stors_enrollement', 'clas_enrollement', 'stat_enrollement', 
+          'session_coded', 'day_type','english_enrollement','hour','minute']]
+y = forecast_data[['electricity_reading', 'steam_reading', 'chilled_water_reading']]
+
+y_pred = model.predict(X)
+
+```
+
+```{python}
+forecast_data = pd.read_excel("data/forecast_data.xlsx")
+
+X = forecast_data[['humidity', 'temperature', 'day_of_week', 'month', 'year', 
+          'day', 'stors_enrollement', 'clas_enrollement', 'stat_enrollement', 
+          'session_coded', 'day_type','english_enrollement','hour','minute']]
+y = forecast_data[['electricity_reading', 'steam_reading', 'chilled_water_reading']]
+
+y_pred = model.predict(X)
+
+```
+
+
+
+## Forecasting Results
+
+```{python}
+#| fig-align: center
+
+el_data = [x[0] for x in y_pred]
+st_data = [x[1] for x in y_pred]
+cw_data = [x[2] for x in y_pred]
+
+
+
+plt.figure(figsize=(12,7.5))
+plt.subplot(3,1,1)
+plt.plot(forecast_data['time'],el_data,label=r'$\bf{Electricity\;Consumption}$',color='tab:green')
+plt.title('Forecasted Electricity, Steam, and Chilled Water Consumption - Philip E. Austin Building')
+plt.ylabel('Electricity Consumption\nkW')
+plt.legend()
+
+
+plt.subplot(3,1,2)
+plt.plot(forecast_data['time'],st_data,label=r'$\bf{Steam\;Consumption}$',color='tab:orange')
+plt.ylabel('Steam Consumption\nPPH')
+plt.legend()
+
+
+plt.subplot(3,1,3)
+plt.plot(forecast_data['time'],cw_data,label=r'$\bf{Chilled\;Water\;Consumption}$',color='tab:blue')
+plt.xlabel('Time')
+plt.ylabel('Chilled Water Consumption\nPPH')
+plt.legend()
+
+plt.show()
+
+```
+
+## References
+
+::: {#refs}
+
+:::
+
+# Thank You!
+
+Questions?
